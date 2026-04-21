@@ -1,0 +1,294 @@
+{
+  "title": "Memrise Feature Parity — Product Requirements",
+  "version": "1.0.0",
+  "date": "2026-04-21",
+  "features": [
+    {
+      "id": "srs",
+      "name": "Spaced Repetition System",
+      "priority": "P0",
+      "learningImpact": "very-high",
+      "implementationEffort": "medium",
+      "description": "Schedule each word for review at increasing intervals based on answer correctness. Incorrect answers reset the interval; correct answers extend it (e.g. 1d → 3d → 7d → 14d → 30d).",
+      "currentState": "No persistence of results or scheduling. Quiz results exist only in session state.",
+      "requiredChanges": {
+        "backend": [
+          "Add a UserWordProgress schema: { userId, wordId, interval, nextReviewAt, easeFactor, consecutiveCorrect }",
+          "POST /progress endpoint to record a quiz result and compute the next review date",
+          "GET /words/due endpoint returning words where nextReviewAt <= now for the authenticated user"
+        ],
+        "frontend": [
+          "Replace localStorage word list with API-fetched due words",
+          "Submit results to POST /progress after each session"
+        ]
+      },
+      "acceptanceCriteria": [
+        "A word answered correctly three times in a row is not shown again for at least 7 days",
+        "A word answered incorrectly resets to a 1-day interval",
+        "The due-word count is shown to the user before starting a session"
+      ]
+    },
+    {
+      "id": "difficult-words",
+      "name": "Difficult Words Queue",
+      "priority": "P0",
+      "learningImpact": "high",
+      "implementationEffort": "low",
+      "description": "Surface words with 2+ consecutive incorrect answers into a dedicated review session available at any time, independent of the SRS schedule.",
+      "currentState": "Per-session incorrect answers are tracked in useTimedQuizMachine but not persisted.",
+      "requiredChanges": {
+        "backend": [
+          "Add consecutiveIncorrect counter to UserWordProgress",
+          "GET /words/difficult endpoint returning words where consecutiveIncorrect >= 2"
+        ],
+        "frontend": [
+          "Add 'Difficult Words' mode option on the quiz start screen",
+          "Feed difficult words into the existing quiz machine"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Words answered incorrectly twice in a row appear in the Difficult Words list",
+        "Answering a difficult word correctly twice removes it from the list",
+        "The difficult word count is shown on the home/dashboard screen"
+      ]
+    },
+    {
+      "id": "streaks",
+      "name": "Streak Tracking",
+      "priority": "P1",
+      "learningImpact": "high",
+      "implementationEffort": "low",
+      "description": "Track consecutive days on which the user completes at least one quiz session. Display the streak count prominently. Reset to 0 if a calendar day is missed.",
+      "currentState": "Not implemented.",
+      "requiredChanges": {
+        "backend": [
+          "Add streakCount and lastActivityDate fields to the User schema",
+          "Update streak on any POST /progress call: increment if lastActivityDate was yesterday, reset to 1 if older, no-op if today"
+        ],
+        "frontend": [
+          "Display streak count in the header or home screen",
+          "Show a celebration animation when the streak increments"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Completing a session on consecutive days increments the streak",
+        "Missing a calendar day resets the streak to 0",
+        "The current streak is visible without starting a session"
+      ]
+    },
+    {
+      "id": "progress-dashboard",
+      "name": "Progress Dashboard & Statistics",
+      "priority": "P1",
+      "learningImpact": "medium",
+      "implementationEffort": "medium",
+      "description": "A dedicated page showing total words learned, accuracy over the last 7 and 30 days, a daily activity heatmap, and per-word history.",
+      "currentState": "Not implemented.",
+      "requiredChanges": {
+        "backend": [
+          "GET /stats endpoint returning aggregate metrics for the authenticated user",
+          "Store per-session summary (date, correctCount, incorrectCount) in a Sessions collection"
+        ],
+        "frontend": [
+          "New /progress route with chart components (e.g. recharts or Chart.js)",
+          "Activity heatmap component showing daily session completion"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Dashboard shows total unique words with at least one correct answer",
+        "Accuracy percentage is shown for the last 7 and 30 days",
+        "A heatmap shows which days had activity in the last 3 months"
+      ]
+    },
+    {
+      "id": "quiz-modes",
+      "name": "Multiple Quiz Modes",
+      "priority": "P1",
+      "learningImpact": "high",
+      "implementationEffort": "medium",
+      "description": "Offer distinct learning modes: Classic (untimed multiple-choice), Speed Review (current timed mode), Typing Practice (user types translation), Flashcard (self-reported correct/incorrect).",
+      "currentState": "Only timed multiple-choice is implemented.",
+      "requiredChanges": {
+        "backend": [],
+        "frontend": [
+          "Mode selector on the quiz start screen",
+          "TypingPractice component: text input with exact-match or fuzzy-match checking",
+          "Flashcard component: show word → flip → self-report",
+          "Classic mode: remove countdown timer from existing TimedVocabularyTest"
+        ]
+      },
+      "acceptanceCriteria": [
+        "User can select a mode before starting a session",
+        "Typing mode accepts the correct translation (case-insensitive) and flags common typos",
+        "Flashcard mode records self-reported outcome and feeds it into SRS"
+      ]
+    },
+    {
+      "id": "audio-pronunciation",
+      "name": "Audio Pronunciation",
+      "priority": "P2",
+      "learningImpact": "high",
+      "implementationEffort": "high",
+      "description": "Play a native-speaker audio clip for each word during review. Allow the user to replay on demand. Support a listening-only quiz mode where audio plays first and the user identifies the word.",
+      "currentState": "No audio field on Word schema; no playback implemented.",
+      "requiredChanges": {
+        "backend": [
+          "Add audioUrl field to Word schema",
+          "Support audio file upload (S3 or local storage) via POST /words/:id/audio"
+        ],
+        "frontend": [
+          "Audio player component (HTML5 <audio> or Howler.js)",
+          "Auto-play audio when a new question is shown",
+          "Listening mode: play audio, show four word options"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Audio plays automatically when a question loads (if available)",
+        "A replay button replays the clip",
+        "Words without audio degrade gracefully (no broken UI)"
+      ]
+    },
+    {
+      "id": "example-sentences",
+      "name": "Example Sentences",
+      "priority": "P2",
+      "learningImpact": "medium",
+      "implementationEffort": "low",
+      "description": "Display a short Uzbek example sentence using the target word alongside its translation, giving learners context beyond a bare word-translation pair.",
+      "currentState": "Word schema has no exampleSentence field.",
+      "requiredChanges": {
+        "backend": [
+          "Add exampleSentence?: string and exampleSentenceTranslation?: string to Word schema and DTOs"
+        ],
+        "frontend": [
+          "Show example sentence below the word during the answer reveal phase"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Words with an example sentence display it during the answer reveal",
+        "Words without an example sentence show nothing extra (no empty placeholder)"
+      ]
+    },
+    {
+      "id": "daily-goals",
+      "name": "Daily Goal Setting",
+      "priority": "P2",
+      "learningImpact": "medium",
+      "implementationEffort": "low",
+      "description": "Let users choose a daily target (5, 10, 15, or 20 words) and show progress toward that goal within the session and on the home screen.",
+      "currentState": "Not implemented.",
+      "requiredChanges": {
+        "backend": [
+          "Add dailyGoal field to User schema (default 10)"
+        ],
+        "frontend": [
+          "Goal picker in user settings",
+          "Progress bar on home screen: X / dailyGoal words reviewed today"
+        ]
+      },
+      "acceptanceCriteria": [
+        "User can change their daily goal from settings",
+        "Home screen shows today's progress toward the goal",
+        "Reaching the goal shows a completion indicator"
+      ]
+    },
+    {
+      "id": "reminders",
+      "name": "Learning Reminders / Notifications",
+      "priority": "P2",
+      "learningImpact": "medium",
+      "implementationEffort": "medium",
+      "description": "Send a browser push notification or email at a user-configured time each day if the user has not yet completed their daily session.",
+      "currentState": "Not implemented.",
+      "requiredChanges": {
+        "backend": [
+          "Store reminderTime and reminderEnabled in User schema",
+          "Scheduled job (cron) to send Web Push or email to users who have not yet met their daily goal"
+        ],
+        "frontend": [
+          "Request notification permission on opt-in",
+          "Store Push API subscription in backend",
+          "Reminder settings in user preferences page"
+        ]
+      },
+      "acceptanceCriteria": [
+        "User can enable/disable reminders and choose a time",
+        "Notification is not sent if the daily goal is already met",
+        "Disabling reminders stops all future notifications immediately"
+      ]
+    },
+    {
+      "id": "leaderboards",
+      "name": "Leaderboards & Social Features",
+      "priority": "P3",
+      "learningImpact": "low",
+      "implementationEffort": "high",
+      "description": "Rank users by weekly XP points earned from correct answers. Show a global leaderboard and an optional friends leaderboard.",
+      "currentState": "Not implemented. Requires a points/XP system as prerequisite.",
+      "requiredChanges": {
+        "backend": [
+          "Add weeklyXp and totalXp to User schema",
+          "Award XP on POST /progress based on correctness and word difficulty",
+          "GET /leaderboard endpoint returning top N users by weeklyXp",
+          "Weekly cron to reset weeklyXp"
+        ],
+        "frontend": [
+          "Leaderboard page /leaderboard",
+          "XP counter in header"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Correct answers award XP; incorrect answers award 0",
+        "Leaderboard resets weekly",
+        "User can see their own rank even if outside the top 10"
+      ]
+    },
+    {
+      "id": "mems",
+      "name": "User-Created Mnemonics (Mems)",
+      "priority": "P3",
+      "learningImpact": "medium",
+      "implementationEffort": "high",
+      "description": "Allow users to attach a text or image mnemonic to any word. Other users can upvote mems. The highest-voted mem is shown during review.",
+      "currentState": "Not implemented.",
+      "requiredChanges": {
+        "backend": [
+          "New Mem schema: { id, wordId, authorId, text, imageUrl?, upvotes: number }",
+          "CRUD endpoints for mems under /words/:id/mems",
+          "POST /words/:id/mems/:memId/upvote"
+        ],
+        "frontend": [
+          "Mem display during answer reveal",
+          "Mem creation form accessible from the word detail view",
+          "Upvote button on each mem"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Any authenticated user can create a mem for any word",
+        "The mem with the most upvotes is shown by default during review",
+        "Users cannot upvote their own mem"
+      ]
+    },
+    {
+      "id": "offline-mode",
+      "name": "Offline Mode",
+      "priority": "P3",
+      "learningImpact": "low",
+      "implementationEffort": "low",
+      "description": "Ensure the quiz remains fully functional without connectivity, and queue SRS result submissions for sync when the connection is restored.",
+      "currentState": "Quiz already works offline via localStorage. The gap is result sync and new-word fetch.",
+      "requiredChanges": {
+        "backend": [],
+        "frontend": [
+          "Service Worker (or next-pwa) to cache the app shell and word data",
+          "IndexedDB queue for unsynchronised progress events; flush on reconnect"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Quiz runs without any network requests once words are loaded",
+        "Progress is queued locally and synced automatically when back online",
+        "User sees a clear offline indicator in the UI"
+      ]
+    }
+  ]
+}
