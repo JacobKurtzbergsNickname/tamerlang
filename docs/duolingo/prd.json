@@ -1,0 +1,307 @@
+{
+  "document": {
+    "title": "Product Requirements — Duolingo-Inspired Features",
+    "app": "Uzbek Learning App",
+    "date": "2026-04-21",
+    "status": "draft"
+  },
+  "features": [
+    {
+      "id": "F-01",
+      "name": "Streak Tracking",
+      "priority": "P1",
+      "effort": "low",
+      "impact": "high",
+      "description": "Track the number of consecutive days a user completes at least one review session. Expose current streak and longest streak on the dashboard and profile.",
+      "user_story": "As a learner, I want to see my daily streak so that I am motivated to open the app every day.",
+      "acceptance_criteria": [
+        "Streak counter increments when at least one /srs/review submission is recorded on a calendar day.",
+        "Streak resets to 0 if no review is submitted on a calendar day.",
+        "Current streak and longest streak are visible on the profile/dashboard page.",
+        "A streak-shield token can be earned (e.g., via a milestone) and prevents one reset."
+      ],
+      "backend_changes": [
+        "Add currentStreak (number), longestStreak (number), lastReviewDate (Date) fields to User schema.",
+        "Update streak counters inside the POST /srs/review handler after each submission.",
+        "Expose streak values via GET /users/me or GET /srs/progress."
+      ],
+      "frontend_changes": [
+        "Display streak flame icon + counter in nav bar or dashboard.",
+        "Show streak milestone animation when streak increments."
+      ]
+    },
+    {
+      "id": "F-02",
+      "name": "Daily XP Goal & Experience Points",
+      "priority": "P1",
+      "effort": "low",
+      "impact": "high",
+      "description": "Award XP for each correct answer submitted via the SRS review endpoint. Let users choose a daily XP goal. Show a progress bar towards today's goal on the home screen.",
+      "user_story": "As a learner, I want to set a daily XP target and see my progress toward it so that I have a clear, achievable goal each day.",
+      "acceptance_criteria": [
+        "Correct answers award 10 XP each; incorrect answers award 4 XP (for participation).",
+        "Users can select a daily goal: Casual (20 XP), Regular (50 XP), Serious (100 XP), Intense (200 XP).",
+        "The home screen shows a progress bar: today's XP earned vs daily goal.",
+        "Reaching the daily goal triggers a congratulatory animation.",
+        "XP history is queryable by day/week for the dashboard chart."
+      ],
+      "backend_changes": [
+        "Add xpEarned (number) to each UserWordProgress review event.",
+        "Add dailyXpGoal (number) to User schema.",
+        "Add GET /srs/xp?period=today|week|month endpoint returning aggregated XP."
+      ],
+      "frontend_changes": [
+        "XP goal selector in onboarding and settings.",
+        "Daily XP progress bar on home/dashboard.",
+        "XP earned summary on quiz results screen."
+      ]
+    },
+    {
+      "id": "F-03",
+      "name": "Spaced Repetition UI Integration",
+      "priority": "P0",
+      "effort": "medium",
+      "impact": "very_high",
+      "description": "Wire the existing SM-2 backend to the frontend. The quiz should load due cards from GET /srs/due and submit results to POST /srs/review after each answer. A 'Review Due' card on the home screen shows how many words need practice today.",
+      "user_story": "As a learner, I want the app to show me words I am about to forget so that my study time is as efficient as possible.",
+      "acceptance_criteria": [
+        "VocabularyProvider fetches words from GET /srs/due instead of hardcoded localStorage data.",
+        "After each answer in the quiz, POST /srs/review is called with wordId, quality (0-5), and responseTime.",
+        "The home screen displays a badge showing the count of words due for review today.",
+        "If no words are due, the home screen says 'All caught up!' and offers to practice ahead.",
+        "The quiz gracefully handles the empty-due-list state."
+      ],
+      "backend_changes": [],
+      "frontend_changes": [
+        "Refactor VocabularyProvider to fetch from /srs/due via authFetch.",
+        "Add review submission call inside useTimedQuizMachine after SELECT_ANSWER action.",
+        "Add 'due today' count badge to home page using GET /srs/due response length.",
+        "Add loading and error states to VocabularyProvider."
+      ]
+    },
+    {
+      "id": "F-04",
+      "name": "Multiple Exercise Types",
+      "priority": "P2",
+      "effort": "medium",
+      "impact": "high",
+      "description": "Introduce three additional exercise formats alongside the existing multiple-choice quiz: tap-the-pairs (matching), free-text translation input, and word-bank sentence ordering.",
+      "user_story": "As a learner, I want varied question formats so that I am challenged in different ways and do not get bored.",
+      "acceptance_criteria": [
+        "Tap-the-pairs: two columns (Uzbek / English) of 4-6 items each; user taps matching pairs; correct pairs disappear.",
+        "Free-text input: a word is shown; user types the translation; fuzzy matching accepts minor typos.",
+        "Word-bank ordering: a target sentence is shown with one word blanked; user selects from 4 word-bank options.",
+        "Exercise type is randomly selected per question within a session, weighted by the word's current SRS interval.",
+        "All three types submit results to the same POST /srs/review endpoint."
+      ],
+      "backend_changes": [
+        "Add exerciseType field to the review submission payload (multiple_choice | pairs | typing | word_bank).",
+        "Optionally adjust quality score weighting based on exercise difficulty."
+      ],
+      "frontend_changes": [
+        "New MatchingPairs component.",
+        "New TypingExercise component with fuzzy match utility.",
+        "New WordBank component.",
+        "Update useTimedQuizMachine to support exerciseType state and dispatch."
+      ]
+    },
+    {
+      "id": "F-05",
+      "name": "Vocabulary Organised by Topic / Skill Tree",
+      "priority": "P2",
+      "effort": "high",
+      "impact": "high",
+      "description": "Group words into thematic skill units (e.g., Greetings, Numbers, Food, Family, Travel). Users progress through units sequentially; completing a unit unlocks the next. A visual grid shows unit completion status.",
+      "user_story": "As a learner, I want to study vocabulary grouped by topic so that I can see my overall progress and know what to study next.",
+      "acceptance_criteria": [
+        "Words have an optional topic field (string, e.g., 'greetings', 'food').",
+        "A Skill model exists with: id, name, description, iconUrl, prerequisiteSkillIds[], wordIds[].",
+        "The home page shows a skill grid; locked skills are greyed out.",
+        "A skill unlocks when all prerequisite skills have at least 80% of words at SRS interval >= 7 days.",
+        "Clicking an unlocked skill starts a review session filtered to that skill's words."
+      ],
+      "backend_changes": [
+        "Add topic (string) field to Word schema.",
+        "Create Skill schema with name, description, iconUrl, prerequisiteSkillIds, wordIds.",
+        "Create SkillsModule with CRUD endpoints (admin-only writes) and GET /skills public read.",
+        "Add GET /skills/:id/progress endpoint returning per-user mastery %."
+      ],
+      "frontend_changes": [
+        "New Skills page (/skills) with skill card grid.",
+        "Skill card shows: icon, name, completion bar, locked/unlocked state.",
+        "Clicking a skill card launches quiz pre-filtered to that skill's due words."
+      ]
+    },
+    {
+      "id": "F-06",
+      "name": "Progress Dashboard",
+      "priority": "P1",
+      "effort": "medium",
+      "impact": "high",
+      "description": "A personal stats page aggregating learning history: words by SRS status, streak, XP over time, accuracy rate, and total reviews. Backed entirely by existing SRS data.",
+      "user_story": "As a learner, I want to see my learning statistics so that I can feel a sense of progress and identify areas that need more work.",
+      "acceptance_criteria": [
+        "Dashboard shows: current streak, longest streak, total words (new/learning/mastered), daily XP chart (last 7 days), overall accuracy %, and total reviews completed.",
+        "Word status definitions: new = never reviewed, learning = interval < 21 days, mastered = interval >= 21 days.",
+        "XP chart is a bar chart with one bar per day for the past 7 days.",
+        "Accuracy % = total correct / total reviews across all time.",
+        "Page loads within 2 seconds on a cold session."
+      ],
+      "backend_changes": [
+        "GET /srs/progress already returns per-word data — add a summary endpoint GET /srs/stats returning aggregate counts and XP series."
+      ],
+      "frontend_changes": [
+        "New Dashboard page (/dashboard) linked from nav.",
+        "StatsCard components for streak, word counts, accuracy.",
+        "Simple bar chart for XP (can use a lightweight library or CSS bars)."
+      ]
+    },
+    {
+      "id": "F-07",
+      "name": "Achievement Badges",
+      "priority": "P3",
+      "effort": "low",
+      "impact": "medium",
+      "description": "One-time awards for reaching milestones. Badges are derived from existing data and stored as a list of earned achievement IDs on the user record.",
+      "user_story": "As a learner, I want to earn badges for milestones so that small wins feel rewarding.",
+      "acceptance_criteria": [
+        "Initial badge set: First Review, 7-Day Streak, 30-Day Streak, 100 Words Learned, 500 Reviews, 50 XP in a Day, First Skill Completed.",
+        "Badges are awarded server-side at review submission time when the condition is first met.",
+        "Earned badges are visible on the user profile page with name, icon, and date earned.",
+        "A toast notification appears in the frontend when a new badge is earned (detected via API response flag)."
+      ],
+      "backend_changes": [
+        "Add earnedAchievements: { achievementId: string, earnedAt: Date }[] to User schema.",
+        "Create achievements definition map (id, name, description, condition function).",
+        "Check and award badges inside POST /srs/review handler.",
+        "Include newlyEarnedAchievements in the review response payload."
+      ],
+      "frontend_changes": [
+        "Achievements section on profile/dashboard page.",
+        "Toast notification component triggered by newlyEarnedAchievements in review response."
+      ]
+    },
+    {
+      "id": "F-08",
+      "name": "Pronunciation Audio",
+      "priority": "P2",
+      "effort": "medium",
+      "impact": "high",
+      "description": "Attach audio clips to words so learners can hear correct Uzbek pronunciation. A speaker icon in the quiz and word-list views plays the clip. Optionally, a listen-and-choose exercise plays audio and asks the user to select the written word.",
+      "user_story": "As a learner, I want to hear how words are pronounced so that I learn correct spoken Uzbek, not just reading.",
+      "acceptance_criteria": [
+        "Word schema has an optional audioUrl (string) field.",
+        "In the quiz, a speaker icon appears when audioUrl is set; clicking it plays the audio.",
+        "Audio auto-plays when a new question is shown (configurable in user settings).",
+        "Admin interface (or seeding script) can attach audio URLs to words.",
+        "If audioUrl is absent, the speaker icon is hidden (no broken audio states)."
+      ],
+      "backend_changes": [
+        "Add audioUrl (string, optional) field to Word schema.",
+        "Include audioUrl in all word query responses."
+      ],
+      "frontend_changes": [
+        "Add AudioButton component that wraps the HTML Audio API.",
+        "Render AudioButton in Translation component when audioUrl is present.",
+        "Add 'auto-play audio' toggle to user settings.",
+        "Optional: new ListenAndChoose exercise type component."
+      ]
+    },
+    {
+      "id": "F-09",
+      "name": "Mistake Review Mode",
+      "priority": "P1",
+      "effort": "low",
+      "impact": "medium",
+      "description": "After a quiz session the results screen offers a 'Review Mistakes' button that re-runs only the words the user answered incorrectly. No backend changes required.",
+      "user_story": "As a learner, I want to immediately re-practice words I got wrong so that I reinforce correct answers while the session is fresh.",
+      "acceptance_criteria": [
+        "The quiz results screen shows which words were answered incorrectly.",
+        "A 'Review Mistakes' button is enabled only when at least one answer was wrong.",
+        "Clicking it starts a new quiz session pre-loaded with only the incorrect words.",
+        "The mistake-review session does not submit results to /srs/review (it is unscored practice)."
+      ],
+      "backend_changes": [],
+      "frontend_changes": [
+        "Results screen lists incorrect answers with correct translations.",
+        "Add 'Review Mistakes' button to results screen that reinitialises useTimedQuizMachine with filtered word list.",
+        "Pass an unscored flag to suppress review submission in mistake-review mode."
+      ]
+    },
+    {
+      "id": "F-10",
+      "name": "Leaderboards",
+      "priority": "P3",
+      "effort": "high",
+      "impact": "medium",
+      "description": "Weekly XP leaderboard among users the learner follows. Shows rank, name, avatar, and weekly XP. Resets every Monday. A lightweight first version shows only followed users; leagues can be a future iteration.",
+      "user_story": "As a learner, I want to see how my weekly XP compares to friends so that friendly competition keeps me engaged.",
+      "acceptance_criteria": [
+        "Users can follow/unfollow other users by user ID or username.",
+        "A leaderboard page shows weekly XP for the current user and all users they follow, ranked descending.",
+        "The weekly period resets at 00:00 UTC every Monday.",
+        "Leaderboard data is cached and refreshed at most every 5 minutes.",
+        "If the user follows nobody, the page shows a prompt to invite friends."
+      ],
+      "backend_changes": [
+        "Add following: string[] (user IDs) to User schema.",
+        "Create POST /users/follow/:id and DELETE /users/follow/:id endpoints.",
+        "Create GET /leaderboard/weekly endpoint returning ranked list of followed users + self with weeklyXP."
+      ],
+      "frontend_changes": [
+        "New Leaderboard page (/leaderboard).",
+        "LeaderboardRow component showing rank, avatar, name, weekly XP bar.",
+        "Follow/unfollow button on user profile pages."
+      ]
+    },
+    {
+      "id": "F-11",
+      "name": "Contextual Example Sentences",
+      "priority": "P2",
+      "effort": "low",
+      "impact": "medium",
+      "description": "Add optional example sentences to each word. Sentences are shown on the quiz answer-reveal screen to demonstrate the word in context.",
+      "user_story": "As a learner, I want to see a word used in a sentence so that I understand its meaning and usage beyond a bare translation.",
+      "acceptance_criteria": [
+        "Word schema has an optional exampleSentences: string[] field (Uzbek sentence + English translation pairs).",
+        "During the quiz answer-reveal phase, if exampleSentences is non-empty, one is displayed below the translation.",
+        "Sentences are visible in a word detail view (if/when one is built).",
+        "The field is optional; absence does not affect quiz flow."
+      ],
+      "backend_changes": [
+        "Add exampleSentences: { uz: string, en: string }[] (optional) to Word schema.",
+        "Include exampleSentences in word query responses."
+      ],
+      "frontend_changes": [
+        "Render one exampleSentences entry in the answer-reveal phase of TimedVocabularyTest.",
+        "Style it distinctly from the word/translation (smaller font, italic)."
+      ]
+    },
+    {
+      "id": "F-12",
+      "name": "Daily Reminder Notifications",
+      "priority": "P2",
+      "effort": "high",
+      "impact": "high",
+      "description": "Send a push or email notification to users who have not reviewed that day at their configured reminder time. Requires a notification service and a backend cron job.",
+      "user_story": "As a learner, I want to receive a daily reminder if I have not studied yet so that I do not break my streak by forgetting.",
+      "acceptance_criteria": [
+        "Users can set a reminder time (HH:MM local time) and enable/disable reminders in settings.",
+        "A daily cron job identifies users who have enabled reminders and have not submitted a review today.",
+        "Notifications are sent via web push (service worker) or email.",
+        "Notification includes the user's current streak count and a link to the app.",
+        "Users can unsubscribe from notifications without disabling other settings."
+      ],
+      "backend_changes": [
+        "Add notificationEnabled (boolean), notificationTime (string HH:MM), pushSubscription (object) to User schema.",
+        "Integrate a push notification library (e.g., web-push) or transactional email service (e.g., Resend).",
+        "Add a cron job (e.g., via @nestjs/schedule) that fires at each unique reminder time and dispatches notifications."
+      ],
+      "frontend_changes": [
+        "Notification settings section in user settings page.",
+        "Register service worker and request push notification permission.",
+        "Save push subscription object via PATCH /users/me."
+      ]
+    }
+  ]
+}
