@@ -1,0 +1,308 @@
+{
+  "product": "TamerLang — Uzbek Vocabulary Learning App",
+  "version": "1.0.0",
+  "date": "2026-04-21",
+  "inspiration": "Babbel language learning platform",
+  "features": [
+    {
+      "id": "F-01",
+      "name": "SRS-Driven Review Mode",
+      "category": "Core Learning Loop",
+      "priority": "high",
+      "effort": "medium",
+      "babbel_analog": "Vocab Workout / Review section",
+      "description": "A dedicated /review route that fetches words due for spaced repetition review (GET /srs/due), runs them through a quiz, and submits quality ratings (0–5) to the SM-2 backend (POST /srs/review). This connects the existing but currently disconnected SRS backend to the frontend quiz.",
+      "user_story": "As a learner, I want the app to automatically surface words I need to review today so that I reinforce vocabulary at the optimal moment for long-term retention.",
+      "acceptance_criteria": [
+        "Calling GET /srs/due returns words where nextReview <= now for the authenticated user",
+        "After completing a review quiz, each word's SM-2 state (interval, easinessFactor, repetitions, nextReview) is updated via POST /srs/review",
+        "Words answered correctly receive quality 4 or 5; words answered incorrectly or timed out receive quality 0–2",
+        "The review session ends when the due queue is exhausted",
+        "If no words are due, the UI shows a 'Nothing due today' state with the time until next review"
+      ],
+      "dependencies": [],
+      "affected_files": [
+        "uzbek-frontend/src/app/review/page.tsx",
+        "uzbek-frontend/src/components/Vocabulary/useTimedQuizMachine.ts",
+        "uzbek-frontend/src/lib/api.ts",
+        "uzbek-backend/src/srs/srs.controller.ts",
+        "uzbek-backend/src/srs/srs.service.ts"
+      ]
+    },
+    {
+      "id": "F-02",
+      "name": "Vocabulary Strength Dashboard",
+      "category": "Progress Visibility",
+      "priority": "high",
+      "effort": "small",
+      "babbel_analog": "Vocabulary strength overview (Weak / Medium / Strong)",
+      "description": "A dashboard component that displays each word's strength tier derived from existing SRS fields: Weak (repetitions < 2 or interval ≤ 1), Medium (repetitions 2–4 or interval 2–7), Strong (isLearned === true or interval > 7). Shows counts per tier and a visual breakdown.",
+      "user_story": "As a learner, I want to see how many words I know weakly, moderately, and strongly so that I can gauge my overall progress and identify gaps.",
+      "acceptance_criteria": [
+        "A GET /srs/stats endpoint returns counts of words in each strength tier for the authenticated user",
+        "The dashboard displays Weak, Medium, and Strong word counts with a simple visual (e.g., bar or pie)",
+        "Strength tiers are computed server-side from UserWordProgress fields without schema changes",
+        "Dashboard updates immediately after completing a review session"
+      ],
+      "dependencies": ["F-01"],
+      "affected_files": [
+        "uzbek-frontend/src/components/Dashboard/StrengthDashboard.tsx",
+        "uzbek-backend/src/srs/srs.controller.ts",
+        "uzbek-backend/src/srs/srs.service.ts"
+      ]
+    },
+    {
+      "id": "F-03",
+      "name": "Daily Streak",
+      "category": "Engagement & Habits",
+      "priority": "high",
+      "effort": "small",
+      "babbel_analog": "Daily streak counter",
+      "description": "A streak counter that increments each calendar day the learner completes at least one review session. Resets to 0 on a missed day. Displayed prominently on the home page. A streak freeze mechanic (2 per week, auto-applied) can follow as a V2 addition.",
+      "user_story": "As a learner, I want to see my consecutive days of study so that I have a concrete, daily reason to open the app.",
+      "acceptance_criteria": [
+        "User schema gains fields: currentStreak (number), longestStreak (number), lastActivityDate (Date)",
+        "POST /srs/review updates lastActivityDate and increments currentStreak if lastActivityDate was yesterday; resets to 1 if more than 1 day has passed",
+        "longestStreak is updated whenever currentStreak exceeds it",
+        "The home page displays the current streak count",
+        "A missed day reduces currentStreak to 0 (no freeze mechanic in V1)"
+      ],
+      "dependencies": ["F-01"],
+      "affected_files": [
+        "uzbek-backend/src/schemas/users/user.schema.ts",
+        "uzbek-backend/src/srs/srs.service.ts",
+        "uzbek-frontend/src/app/page.tsx"
+      ]
+    },
+    {
+      "id": "F-04",
+      "name": "Flashcard Exercise Type",
+      "category": "Exercise Variety",
+      "priority": "high",
+      "effort": "small",
+      "babbel_analog": "Flashcard mode in Vocab Workout",
+      "description": "A flip-card exercise format where the learner sees the Uzbek word, then taps to reveal the translation, and self-rates their recall (e.g., 'Got it' / 'Missed it'). Maps to SM-2 quality 5 (got it) or 1 (missed it). Simpler to implement than timed multiple-choice because no answer validation is needed.",
+      "user_story": "As a learner, I want a low-pressure flashcard mode so that I can self-assess my recall without the stress of a timed quiz.",
+      "acceptance_criteria": [
+        "A questionType field is added to the quiz state machine (values: 'multiple-choice' | 'flashcard')",
+        "Flashcard view shows the Uzbek word on the front and translation on the back after tap",
+        "Two action buttons: 'Got it' (submits quality 5) and 'Missed it' (submits quality 1)",
+        "Session ends and submits all ratings to POST /srs/review in bulk or per-card",
+        "Accessible from the review route as an alternative to multiple-choice"
+      ],
+      "dependencies": ["F-01"],
+      "affected_files": [
+        "uzbek-frontend/src/components/Vocabulary/useTimedQuizMachine.ts",
+        "uzbek-frontend/src/components/Vocabulary/FlashCard.tsx"
+      ]
+    },
+    {
+      "id": "F-05",
+      "name": "Lesson and Unit Structure",
+      "category": "Curriculum",
+      "priority": "medium",
+      "effort": "large",
+      "babbel_analog": "Course → Topic → Lesson hierarchy",
+      "description": "Words are grouped into named Lessons (e.g., 'Greetings', 'Numbers 1–20', 'Food and Drink'), and lessons into Topics. A lesson map on the home page lets learners pick a lesson to study. Completing a lesson enrolls its words in the SRS queue for future reviews.",
+      "user_story": "As a learner, I want vocabulary organised into thematic lessons so that I can study related words together and see where I am in the curriculum.",
+      "acceptance_criteria": [
+        "A Lesson schema is created: { id, title, topic, language, wordIds: UUID[], order: number }",
+        "GET /lessons returns all lessons for a language, ordered by topic and lesson order",
+        "POST /lessons/:id/start enrolls all lesson words in SRS (creates UserWordProgress records with nextReview = now)",
+        "The frontend shows a lesson map with status: Not Started / In Progress / Complete",
+        "A lesson is Complete when all its words have isLearned === true",
+        "Word schema gains optional lessonId and topic fields"
+      ],
+      "dependencies": ["F-01"],
+      "affected_files": [
+        "uzbek-backend/src/lessons/",
+        "uzbek-backend/src/schemas/lessons/lesson.schema.ts",
+        "uzbek-backend/src/words/word.schema.ts",
+        "uzbek-frontend/src/app/lessons/page.tsx"
+      ]
+    },
+    {
+      "id": "F-06",
+      "name": "Progress Statistics Page",
+      "category": "Progress Visibility",
+      "priority": "medium",
+      "effort": "small",
+      "babbel_analog": "Stats summary and learning time tracking",
+      "description": "A /stats page showing: total words reviewed, words by strength tier, current and longest streak, total review sessions completed, and lessons started vs. completed. Data is aggregated from existing SRS and streak fields.",
+      "user_story": "As a learner, I want a single page that shows my overall learning progress so that I can feel a sense of accomplishment and identify what to focus on next.",
+      "acceptance_criteria": [
+        "GET /users/me/stats returns: totalWordsReviewed, wordsByTier {weak, medium, strong}, currentStreak, longestStreak, totalSessions, lessonsStarted, lessonsCompleted",
+        "Stats page renders all of the above fields",
+        "Page is accessible from the main navigation",
+        "Data reflects the authenticated user's own history only"
+      ],
+      "dependencies": ["F-02", "F-03"],
+      "affected_files": [
+        "uzbek-backend/src/users/users.service.ts",
+        "uzbek-backend/src/users/users.controller.ts",
+        "uzbek-frontend/src/app/stats/page.tsx"
+      ]
+    },
+    {
+      "id": "F-07",
+      "name": "Weekly Study Goals",
+      "category": "Engagement & Habits",
+      "priority": "medium",
+      "effort": "small",
+      "babbel_analog": "Weekly lesson goals with progress ring",
+      "description": "Learners set a weekly target (e.g., 5 review sessions per week). The home page shows a weekly progress ring (e.g., '3 of 5 this week'). The goal resets each Monday. No notifications in V1.",
+      "user_story": "As a learner, I want to set a weekly practice goal so that I have a concrete target to work toward and don't feel like a missed day ruins everything.",
+      "acceptance_criteria": [
+        "User schema gains: weeklyGoal (number, default 5), weeklySessionsCompleted (number), weeklyGoalResetDate (Date)",
+        "POST /srs/review increments weeklySessionsCompleted; resets it to 0 and updates weeklyGoalResetDate if a new week has started",
+        "PATCH /users/me/goal accepts { weeklyGoal: number } and validates 1 ≤ weeklyGoal ≤ 30",
+        "Home page shows weekly progress ring",
+        "A goal-setting prompt appears during onboarding (F-09) and is editable from settings"
+      ],
+      "dependencies": ["F-01"],
+      "affected_files": [
+        "uzbek-backend/src/schemas/users/user.schema.ts",
+        "uzbek-backend/src/srs/srs.service.ts",
+        "uzbek-backend/src/users/users.controller.ts",
+        "uzbek-frontend/src/app/page.tsx"
+      ]
+    },
+    {
+      "id": "F-08",
+      "name": "Fill-in-the-Blank Exercise",
+      "category": "Exercise Variety",
+      "priority": "medium",
+      "effort": "medium",
+      "babbel_analog": "Fill-in-the-blank sentence exercise",
+      "description": "A sentence is shown with one word blanked out. The learner types the missing Uzbek word. Requires example sentences to be associated with each word. Answer matching is case-insensitive and trims whitespace. Maps to SM-2 quality 4 on correct, 1 on incorrect.",
+      "user_story": "As a learner, I want to type words in context rather than always selecting from a list so that I build active recall and spelling skills.",
+      "acceptance_criteria": [
+        "Word schema gains optional exampleSentence (string) and exampleSentenceTranslation (string) fields",
+        "Fill-in-the-blank questions only appear for words that have an exampleSentence",
+        "Answer validation is case-insensitive and trims surrounding whitespace",
+        "On incorrect answer, the correct word is shown with the full sentence",
+        "questionType 'fill-in-the-blank' added to the quiz state machine"
+      ],
+      "dependencies": ["F-04"],
+      "affected_files": [
+        "uzbek-backend/src/schemas/words/word.schema.ts",
+        "uzbek-frontend/src/components/Vocabulary/FillInTheBlank.tsx",
+        "uzbek-frontend/src/components/Vocabulary/useTimedQuizMachine.ts"
+      ]
+    },
+    {
+      "id": "F-09",
+      "name": "Onboarding Intake Flow",
+      "category": "Personalization",
+      "priority": "medium",
+      "effort": "medium",
+      "babbel_analog": "Onboarding questionnaire and placement",
+      "description": "A 3-screen onboarding flow shown to new users after first login. Collects: reason for learning Uzbek (heritage, travel, work, curiosity), self-assessed level (beginner, some knowledge, conversational), and weekly goal. Stores these on the User record and uses them to recommend a starting lesson.",
+      "user_story": "As a new user, I want to tell the app why I'm learning and how much I already know so that I start at the right level instead of from absolute zero.",
+      "acceptance_criteria": [
+        "User schema gains: learningGoal (enum), proficiencyLevel (enum: beginner | elementary | intermediate), onboardingCompleted (boolean)",
+        "Onboarding flow is shown once when onboardingCompleted === false",
+        "PATCH /users/me/onboarding saves the collected fields and sets onboardingCompleted = true",
+        "Proficiency level gates which lessons appear first on the lesson map",
+        "Weekly goal set during onboarding pre-populates F-07 goal"
+      ],
+      "dependencies": ["F-05", "F-07"],
+      "affected_files": [
+        "uzbek-backend/src/schemas/users/user.schema.ts",
+        "uzbek-backend/src/users/users.controller.ts",
+        "uzbek-frontend/src/app/onboarding/page.tsx"
+      ]
+    },
+    {
+      "id": "F-10",
+      "name": "Audio Pronunciation",
+      "category": "Content Quality",
+      "priority": "medium",
+      "effort": "medium",
+      "babbel_analog": "Native speaker audio on every word",
+      "description": "Each word can have an associated audio clip (CDN URL) that plays automatically on word reveal during a quiz or flashcard session. Learners can also tap the word in any context to replay the audio. In V1, TTS synthesis is acceptable; native recordings are preferred for V2.",
+      "user_story": "As a learner, I want to hear Uzbek words pronounced correctly so that I build accurate pronunciation habits from the start.",
+      "acceptance_criteria": [
+        "Word schema gains optional audioUrl (string) field",
+        "Audio plays automatically when a word is revealed in flashcard or after-answer states",
+        "A speaker icon is shown on any word display; tapping it replays the audio",
+        "Audio is gracefully skipped (no error shown) when audioUrl is null",
+        "Admin tooling or a seed script can bulk-update audioUrl values"
+      ],
+      "dependencies": [],
+      "affected_files": [
+        "uzbek-backend/src/schemas/words/word.schema.ts",
+        "uzbek-backend/src/words/dto/",
+        "uzbek-frontend/src/components/Vocabulary/AudioPlayer.tsx"
+      ]
+    },
+    {
+      "id": "F-11",
+      "name": "Achievement Badges",
+      "category": "Engagement & Habits",
+      "priority": "low",
+      "effort": "medium",
+      "babbel_analog": "Achievement badges for learning milestones",
+      "description": "Badges are awarded server-side when milestone conditions are met. A badge notification appears in the UI after the triggering action. Badges are displayed on the user's profile page.",
+      "user_story": "As a learner, I want to earn badges for meaningful milestones so that my progress is marked with discrete moments of celebration.",
+      "acceptance_criteria": [
+        "User schema gains badges array: [{ id, awardedAt }]",
+        "Initial badge set: FirstReview (complete first review), TenStrong (10 words at Strong), SevenStreak (7-day streak), FiftyLearned (50 words isLearned), FirstLesson (complete first lesson)",
+        "Badge conditions are evaluated server-side after POST /srs/review",
+        "Newly awarded badges are returned in the POST /srs/review response",
+        "Frontend shows a badge unlock animation/toast when a new badge is returned",
+        "Profile page lists all earned badges with award dates"
+      ],
+      "dependencies": ["F-01", "F-03", "F-05"],
+      "affected_files": [
+        "uzbek-backend/src/schemas/users/user.schema.ts",
+        "uzbek-backend/src/srs/srs.service.ts",
+        "uzbek-frontend/src/components/Badges/",
+        "uzbek-frontend/src/app/profile/page.tsx"
+      ]
+    },
+    {
+      "id": "F-12",
+      "name": "Matching Pairs Exercise",
+      "category": "Exercise Variety",
+      "priority": "low",
+      "effort": "medium",
+      "babbel_analog": "Matching pairs (word ↔ translation)",
+      "description": "A grid of Uzbek words and their English translations shown in shuffled order. The learner taps a word and then taps its matching translation; matched pairs disappear. A session is complete when all pairs are matched. Good for studying a new lesson's vocabulary in bulk.",
+      "user_story": "As a learner, I want a matching exercise so that I can associate a batch of new words with their translations in an active, game-like way.",
+      "acceptance_criteria": [
+        "Matching exercise is available as a lesson introduction mode (not a review mode)",
+        "Grids contain 4–6 pairs; drawn from the current lesson's words",
+        "Correct matches are visually confirmed and removed from the grid",
+        "Incorrect matches briefly flash red and remain on the grid",
+        "Completion triggers SRS enrollment for matched words (sets nextReview = tomorrow)"
+      ],
+      "dependencies": ["F-05"],
+      "affected_files": [
+        "uzbek-frontend/src/components/Vocabulary/MatchingPairs.tsx"
+      ]
+    }
+  ],
+  "out_of_scope": [
+    {
+      "feature": "Live teacher classes",
+      "reason": "Babbel discontinued this for consumer use in 2025; operationally complex and not viable for a small team"
+    },
+    {
+      "feature": "AI conversation partner",
+      "reason": "High infrastructure cost; mature Uzbek NLP models do not yet exist"
+    },
+    {
+      "feature": "Social leaderboards",
+      "reason": "Babbel intentionally omits these; adds complexity without proven retention benefit for serious learners"
+    },
+    {
+      "feature": "Podcasts and 2-minute stories",
+      "reason": "Requires significant Uzbek audio content production; addressable once core loop is stable"
+    },
+    {
+      "feature": "Full CEFR course hierarchy",
+      "reason": "Premature given current word count; the lesson/topic structure in F-05 is sufficient for this stage"
+    }
+  ]
+}
