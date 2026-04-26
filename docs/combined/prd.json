@@ -1,0 +1,567 @@
+{
+  "document": {
+    "title": "Consolidated Product Requirements — TamerLang Feature Roadmap",
+    "app": "TamerLang — Uzbek Learning App",
+    "date": "2026-04-26",
+    "status": "draft",
+    "version": "1.0.0",
+    "sources": [
+      "docs/duolingo/prd.json",
+      "docs/babbel/prd.json",
+      "docs/memrise/prd.json"
+    ],
+    "notes": "Consolidated from three app-specific PRDs (Duolingo, Babbel, Memrise). 36 source features merged into 18. Duplicates removed; overlapping features harmonised. Out-of-scope items consolidated at the end."
+  },
+  "features": [
+    {
+      "id": "F-01",
+      "name": "Spaced Repetition System",
+      "category": "Core Learning Loop",
+      "priority": "P0",
+      "effort": "medium",
+      "learning_impact": "very_high",
+      "description": "Schedule each word for review at increasing intervals using the SM-2 algorithm. The backend SRS implementation already exists; this feature wires it to the frontend so the quiz loads due cards from GET /srs/due and submits quality ratings (0–5) to POST /srs/review after each answer.",
+      "user_story": "As a learner, I want the app to automatically surface words I need to review today so that I reinforce vocabulary at the optimal moment for long-term retention.",
+      "acceptance_criteria": [
+        "GET /srs/due returns words where nextReview <= now for the authenticated user.",
+        "After each quiz answer, POST /srs/review is called with wordId, quality (0–5), and responseTime.",
+        "Words answered correctly (quality >= 3) receive an extended interval; incorrect (quality <= 2) reset to a short interval.",
+        "A word answered correctly three or more consecutive times is not shown again for at least 7 days.",
+        "The review session ends when the due queue is exhausted.",
+        "The home screen shows the count of words due for review today.",
+        "If no words are due, the UI shows an 'All caught up!' state with time until next review."
+      ],
+      "backend_changes": [
+        "Create UserWordProgress schema: { userId, wordId, interval, nextReviewAt, easeFactor, consecutiveCorrect, consecutiveIncorrect, repetitions }.",
+        "POST /srs/review: record result and compute next review date via SM-2.",
+        "GET /srs/due: return words where nextReviewAt <= now for the authenticated user.",
+        "GET /srs/progress: return per-word progress data for the authenticated user."
+      ],
+      "frontend_changes": [
+        "Refactor VocabularyProvider to fetch from GET /srs/due via authFetch instead of localStorage.",
+        "Add review submission call inside useTimedQuizMachine after SELECT_ANSWER and TIMEOUT actions.",
+        "Add 'due today' count badge to the home page.",
+        "Add loading and error states to VocabularyProvider.",
+        "Add a dedicated /review route."
+      ],
+      "dependencies": [],
+      "sources": ["duolingo:F-03", "babbel:F-01", "memrise:srs"]
+    },
+    {
+      "id": "F-02",
+      "name": "Difficult Words Queue",
+      "category": "Core Learning Loop",
+      "priority": "P1",
+      "effort": "low",
+      "learning_impact": "high",
+      "description": "Surface words with two or more consecutive incorrect answers into a dedicated review session available at any time, independent of the SRS schedule.",
+      "user_story": "As a learner, I want a dedicated session for my most problematic words so that I can focus extra effort where it is needed most.",
+      "acceptance_criteria": [
+        "Words answered incorrectly twice in a row appear in the Difficult Words list.",
+        "Answering a difficult word correctly twice in succession removes it from the list.",
+        "The difficult word count is shown on the home/dashboard screen.",
+        "A 'Difficult Words' mode is selectable on the quiz start screen.",
+        "Difficult words feed into the existing quiz machine with no new UI components required."
+      ],
+      "backend_changes": [
+        "consecutiveIncorrect counter is part of UserWordProgress (defined in F-01).",
+        "GET /srs/difficult: return words where consecutiveIncorrect >= 2 for the authenticated user."
+      ],
+      "frontend_changes": [
+        "Add 'Difficult Words' mode option on the quiz start screen.",
+        "Show difficult word count on the home/dashboard screen."
+      ],
+      "dependencies": ["F-01"],
+      "sources": ["memrise:difficult-words"]
+    },
+    {
+      "id": "F-03",
+      "name": "Flashcard Mode",
+      "category": "Exercise Variety",
+      "priority": "P1",
+      "effort": "low",
+      "learning_impact": "high",
+      "description": "A flip-card exercise where the learner sees the Uzbek word, taps to reveal the translation, and self-rates recall ('Got it' / 'Missed it'). Maps to SM-2 quality 5 or 1. Lower-pressure than timed multiple-choice; useful for learning new vocabulary before formal review.",
+      "user_story": "As a learner, I want a low-pressure flashcard mode so that I can self-assess my recall without the stress of a timed quiz.",
+      "acceptance_criteria": [
+        "A questionType field is added to the quiz state machine supporting 'multiple-choice' and 'flashcard' values.",
+        "Flashcard view shows the Uzbek word on the front; tapping reveals the translation.",
+        "Two action buttons: 'Got it' (submits quality 5) and 'Missed it' (submits quality 1).",
+        "Ratings are submitted to POST /srs/review at the end of the session or per-card.",
+        "Flashcard mode is accessible from the /review route as an alternative to multiple-choice."
+      ],
+      "backend_changes": [],
+      "frontend_changes": [
+        "Add 'flashcard' value to questionType in useTimedQuizMachine.",
+        "New FlashCard component with flip animation and 'Got it' / 'Missed it' buttons.",
+        "Mode selector on the quiz/review start screen."
+      ],
+      "dependencies": ["F-01"],
+      "sources": ["babbel:F-04", "memrise:quiz-modes"]
+    },
+    {
+      "id": "F-04",
+      "name": "Typing and Fill-in-the-Blank Exercise",
+      "category": "Exercise Variety",
+      "priority": "P1",
+      "effort": "medium",
+      "learning_impact": "high",
+      "description": "Two related active-recall formats: (1) Typing Practice — the word is shown and the learner types the translation; (2) Fill-in-the-Blank — an example sentence is shown with one word blanked and the learner types the missing Uzbek word. Both use case-insensitive fuzzy matching. Fill-in-the-Blank requires example sentences (F-12).",
+      "user_story": "As a learner, I want to type answers rather than always selecting from a list so that I build active recall and spelling skills.",
+      "acceptance_criteria": [
+        "A questionType 'typing' is added to the quiz state machine.",
+        "Typing Practice: the word is shown; learner types the translation; validation is case-insensitive with trimmed whitespace.",
+        "Fuzzy matching accepts minor typos (edit distance <= 1 for words up to 6 chars, <= 2 for longer).",
+        "Fill-in-the-Blank questions only appear for words that have an exampleSentence (F-12).",
+        "On incorrect answer, the correct word is revealed with the full sentence.",
+        "Correct answer maps to SM-2 quality 4; incorrect to quality 1.",
+        "exerciseType is submitted to POST /srs/review to distinguish formats."
+      ],
+      "backend_changes": [
+        "Add exerciseType field to POST /srs/review payload: multiple_choice | flashcard | typing | fill_in_the_blank | matching."
+      ],
+      "frontend_changes": [
+        "New TypingExercise component with text input and fuzzy-match utility.",
+        "New FillInTheBlank component rendering example sentence with blanked word.",
+        "Add 'typing' and 'fill-in-the-blank' values to questionType in useTimedQuizMachine.",
+        "Mode selector on the quiz start screen."
+      ],
+      "dependencies": ["F-01", "F-12"],
+      "sources": ["duolingo:F-04", "babbel:F-08", "memrise:quiz-modes"]
+    },
+    {
+      "id": "F-05",
+      "name": "Matching Pairs Exercise",
+      "category": "Exercise Variety",
+      "priority": "P2",
+      "effort": "medium",
+      "learning_impact": "medium",
+      "description": "A grid of Uzbek words and English translations shown in shuffled order. The learner taps a word then its matching translation; matched pairs disappear. Designed as a lesson-introduction mode to associate a batch of new words before formal SRS review.",
+      "user_story": "As a learner, I want a matching exercise so that I can associate a batch of new words with their translations in an active, game-like way before starting timed review.",
+      "acceptance_criteria": [
+        "Matching exercise is available as a lesson-introduction mode, not a primary SRS review mode.",
+        "Grids contain 4–6 pairs drawn from the current lesson's words.",
+        "Correct matches are visually confirmed and removed from the grid.",
+        "Incorrect matches flash red and remain on the grid.",
+        "Completing the exercise triggers SRS enrolment for matched words (nextReview = tomorrow).",
+        "Results are submitted to POST /srs/review with exerciseType = 'matching'."
+      ],
+      "backend_changes": [],
+      "frontend_changes": [
+        "New MatchingPairs component.",
+        "Integrate with lesson start flow (F-09)."
+      ],
+      "dependencies": ["F-01", "F-09"],
+      "sources": ["duolingo:F-04", "babbel:F-12"]
+    },
+    {
+      "id": "F-06",
+      "name": "Mistake Review Mode",
+      "category": "Exercise Variety",
+      "priority": "P1",
+      "effort": "low",
+      "learning_impact": "medium",
+      "description": "After a quiz session the results screen offers a 'Review Mistakes' button that re-runs only the words the user answered incorrectly. The session is unscored so it serves as low-stakes reinforcement while the session is fresh.",
+      "user_story": "As a learner, I want to immediately re-practice words I got wrong so that I reinforce correct answers while the session is fresh.",
+      "acceptance_criteria": [
+        "The quiz results screen lists all words answered incorrectly with their correct translations.",
+        "A 'Review Mistakes' button is enabled only when at least one answer was wrong.",
+        "Clicking it starts a new quiz session pre-loaded with only the incorrect words.",
+        "The mistake-review session does not submit results to POST /srs/review.",
+        "After the mistake-review session the user is returned to the results screen."
+      ],
+      "backend_changes": [],
+      "frontend_changes": [
+        "Results screen lists incorrect answers with correct translations.",
+        "Add 'Review Mistakes' button that reinitialises useTimedQuizMachine with the filtered word list.",
+        "Pass an unscored flag to suppress review submission in mistake-review mode."
+      ],
+      "dependencies": ["F-01"],
+      "sources": ["duolingo:F-09"]
+    },
+    {
+      "id": "F-07",
+      "name": "Streak Tracking",
+      "category": "Engagement & Habits",
+      "priority": "P1",
+      "effort": "low",
+      "learning_impact": "high",
+      "description": "Track consecutive calendar days on which the user completes at least one review session. Reset to 0 on any missed day. Display current streak and longest streak prominently. A streak-shield mechanic (prevents one reset) is deferred to V2.",
+      "user_story": "As a learner, I want to see my consecutive days of study so that I have a concrete, daily reason to open the app.",
+      "acceptance_criteria": [
+        "User schema gains: currentStreak (number), longestStreak (number), lastActivityDate (Date).",
+        "POST /srs/review increments currentStreak if lastActivityDate was yesterday; resets to 1 if more than 1 day has passed; no-ops if already updated today.",
+        "longestStreak is updated whenever currentStreak exceeds it.",
+        "The home page and nav bar display the current streak with a flame icon.",
+        "Missing a calendar day resets currentStreak to 0 (no streak-freeze mechanic in V1).",
+        "A streak milestone animation plays when the streak increments."
+      ],
+      "backend_changes": [
+        "Add currentStreak, longestStreak, lastActivityDate to User schema.",
+        "Update streak counters inside the POST /srs/review handler.",
+        "Expose streak values via GET /users/me."
+      ],
+      "frontend_changes": [
+        "Display streak flame icon + counter in the nav bar or home screen.",
+        "Show streak milestone animation on increment."
+      ],
+      "dependencies": ["F-01"],
+      "sources": ["duolingo:F-01", "babbel:F-03", "memrise:streaks"]
+    },
+    {
+      "id": "F-08",
+      "name": "Learning Goals",
+      "category": "Engagement & Habits",
+      "priority": "P2",
+      "effort": "low",
+      "learning_impact": "medium",
+      "description": "Learners set a daily target (number of words reviewed) and a weekly session-count target. Progress toward both is shown on the home screen. Daily goal resets at midnight; weekly goal resets every Monday. No push notifications in V1 (see F-14).",
+      "user_story": "As a learner, I want to set daily and weekly learning targets so that I have clear, achievable goals without feeling that a single missed day ruins everything.",
+      "acceptance_criteria": [
+        "User schema gains: dailyGoal (number, default 10), weeklyGoal (number, default 5), weeklySessionsCompleted (number), weeklyGoalResetDate (Date).",
+        "PATCH /users/me/goals accepts { dailyGoal, weeklyGoal } with validation (dailyGoal 1–50, weeklyGoal 1–30).",
+        "POST /srs/review increments weeklySessionsCompleted and resets it at the start of each new week.",
+        "Home screen shows a daily progress bar (words reviewed today vs dailyGoal) and a weekly progress ring (sessions this week vs weeklyGoal).",
+        "Reaching the daily goal triggers a congratulatory indicator.",
+        "Goal-setting is included in onboarding (F-16) and editable from user settings."
+      ],
+      "backend_changes": [
+        "Add dailyGoal, weeklyGoal, weeklySessionsCompleted, weeklyGoalResetDate to User schema.",
+        "PATCH /users/me/goals endpoint."
+      ],
+      "frontend_changes": [
+        "Daily progress bar on home/dashboard.",
+        "Weekly progress ring on home/dashboard.",
+        "Goal picker in onboarding flow and user settings."
+      ],
+      "dependencies": ["F-01"],
+      "sources": ["duolingo:F-02", "babbel:F-07", "memrise:daily-goals"]
+    },
+    {
+      "id": "F-09",
+      "name": "Lesson and Unit Structure",
+      "category": "Curriculum",
+      "priority": "P2",
+      "effort": "high",
+      "learning_impact": "high",
+      "description": "Words are grouped into named Lessons (e.g. 'Greetings', 'Numbers 1–20') organised into Topics. A skill-map grid shows completion status. Starting a lesson enrolls its words in SRS. A lesson is complete when all its words reach the Strong tier. Prerequisite lessons must be completed before the next unlocks.",
+      "user_story": "As a learner, I want vocabulary organised into thematic lessons so that I can study related words together and have a clear sense of where I am in the curriculum.",
+      "acceptance_criteria": [
+        "Lesson schema: { id, title, topic, language, wordIds: UUID[], order: number, prerequisiteLessonIds: UUID[], iconUrl?: string }.",
+        "GET /lessons returns all lessons for a language ordered by topic and lesson order.",
+        "POST /lessons/:id/start enrolls all lesson words in SRS (creates UserWordProgress records with nextReview = now).",
+        "The frontend shows a skill-map grid with per-lesson status: Not Started / In Progress / Complete.",
+        "A lesson is Complete when all its words have interval >= 7 days.",
+        "A lesson is locked until all its prerequisites are Complete.",
+        "Clicking an unlocked new lesson opens Matching Pairs intro (F-05); in-progress lessons go straight to filtered review.",
+        "Word schema gains optional lessonId and topic fields."
+      ],
+      "backend_changes": [
+        "Create Lesson schema with title, topic, language, wordIds, order, prerequisiteLessonIds, iconUrl.",
+        "Create LessonsModule with CRUD endpoints (admin-only writes) and GET /lessons.",
+        "POST /lessons/:id/start endpoint.",
+        "GET /lessons/:id/progress: per-user mastery % and completion status.",
+        "Add lessonId and topic fields to Word schema."
+      ],
+      "frontend_changes": [
+        "New /lessons page with skill-map grid.",
+        "LessonCard component: icon, title, completion bar, locked/unlocked state.",
+        "Clicking a card launches Matching Pairs intro (new lesson) or filtered review (in-progress)."
+      ],
+      "dependencies": ["F-01"],
+      "sources": ["duolingo:F-05", "babbel:F-05"]
+    },
+    {
+      "id": "F-10",
+      "name": "Progress Dashboard & Statistics",
+      "category": "Progress Visibility",
+      "priority": "P1",
+      "effort": "medium",
+      "learning_impact": "high",
+      "description": "A personal stats page aggregating the learner's history: vocabulary by strength tier (Weak / Medium / Strong), current and longest streak, daily activity heatmap, accuracy over 7 and 30 days, lessons progress, and total reviews. All data derives from existing SRS and streak fields.",
+      "user_story": "As a learner, I want a single page that shows my overall learning progress so that I can feel a sense of accomplishment and identify what to focus on next.",
+      "acceptance_criteria": [
+        "Strength tiers — Weak: interval <= 1 day or repetitions < 2; Medium: interval 2–7 days; Strong: interval > 7 days.",
+        "GET /srs/stats returns: wordsByTier {weak, medium, strong}, totalReviews, accuracyAllTime, accuracy7Days, accuracy30Days.",
+        "GET /users/me/stats returns: currentStreak, longestStreak, totalSessions, lessonsStarted, lessonsCompleted.",
+        "Dashboard shows: streak, word-tier chart, accuracy percentages, 7-day activity bar chart, 90-day activity heatmap, lesson progress.",
+        "Page loads within 2 seconds on a cold session.",
+        "Dashboard is accessible from the main navigation.",
+        "Data reflects the authenticated user's history only."
+      ],
+      "backend_changes": [
+        "GET /srs/stats endpoint: aggregate tier counts, accuracy metrics.",
+        "GET /users/me/stats endpoint: streak, session, and lesson aggregates.",
+        "Store per-session summary (date, correctCount, incorrectCount) in a Sessions collection."
+      ],
+      "frontend_changes": [
+        "New /dashboard page linked from nav.",
+        "StatsCard components for streak, word counts by tier, accuracy.",
+        "Bar or donut chart for word-tier distribution.",
+        "7-day activity bar chart.",
+        "90-day activity heatmap component."
+      ],
+      "dependencies": ["F-01", "F-07"],
+      "sources": ["duolingo:F-06", "babbel:F-02", "babbel:F-06", "memrise:progress-dashboard"]
+    },
+    {
+      "id": "F-11",
+      "name": "Audio Pronunciation",
+      "category": "Content Quality",
+      "priority": "P2",
+      "effort": "medium",
+      "learning_impact": "high",
+      "description": "Attach an audio clip (CDN URL) to each word so learners hear correct Uzbek pronunciation. Audio plays automatically on word reveal; a speaker icon allows replay on demand. TTS synthesis is acceptable in V1; native recordings preferred for V2. An optional listening-mode exercise (hear audio, pick the word) extends this feature.",
+      "user_story": "As a learner, I want to hear Uzbek words pronounced correctly so that I build accurate pronunciation habits from the start.",
+      "acceptance_criteria": [
+        "Word schema gains optional audioUrl (string) field.",
+        "Audio plays automatically when a word is shown in flashcard or answer-reveal states (configurable per user).",
+        "A speaker icon appears on any word display when audioUrl is present; tapping it replays the audio.",
+        "Audio is gracefully skipped with no error shown when audioUrl is null.",
+        "Admin tooling or a seed script can bulk-update audioUrl values.",
+        "Optional: a listening mode plays audio first and asks the learner to select the matching written word."
+      ],
+      "backend_changes": [
+        "Add audioUrl (string, optional) to Word schema; include in all word query responses.",
+        "Support audio URL association via PATCH /words/:id."
+      ],
+      "frontend_changes": [
+        "New AudioPlayer component wrapping the HTML5 Audio API.",
+        "Render AudioPlayer in Translation and FlashCard components when audioUrl is present.",
+        "Add 'auto-play audio' toggle to user settings.",
+        "Optional: ListenAndChoose exercise type component."
+      ],
+      "dependencies": [],
+      "sources": ["duolingo:F-08", "babbel:F-10", "memrise:audio-pronunciation"]
+    },
+    {
+      "id": "F-12",
+      "name": "Example Sentences",
+      "category": "Content Quality",
+      "priority": "P2",
+      "effort": "low",
+      "learning_impact": "medium",
+      "description": "Add optional bilingual example sentences (Uzbek + English) to each word. Shown during the quiz answer-reveal phase to give context. Also powers the Fill-in-the-Blank exercise (F-04).",
+      "user_story": "As a learner, I want to see a word used in a sentence so that I understand its meaning and usage beyond a bare translation.",
+      "acceptance_criteria": [
+        "Word schema gains optional exampleSentences: { uz: string, en: string }[] field.",
+        "During answer-reveal, one example sentence is displayed below the translation when available.",
+        "Sentence is styled distinctly (smaller font, italic).",
+        "Words without example sentences show nothing extra (no empty placeholder).",
+        "exampleSentences is included in all word query responses."
+      ],
+      "backend_changes": [
+        "Add exampleSentences: { uz: string, en: string }[] (optional) to Word schema and DTOs.",
+        "Include exampleSentences in all word query responses."
+      ],
+      "frontend_changes": [
+        "Render one exampleSentences entry in the answer-reveal phase of TimedVocabularyTest.",
+        "Style distinctly from the main translation (smaller, italic)."
+      ],
+      "dependencies": [],
+      "sources": ["duolingo:F-11", "babbel:F-08", "memrise:example-sentences"]
+    },
+    {
+      "id": "F-13",
+      "name": "Achievement Badges",
+      "category": "Engagement & Habits",
+      "priority": "P2",
+      "effort": "medium",
+      "learning_impact": "medium",
+      "description": "One-time awards for reaching learning milestones, evaluated server-side after each review submission. A toast notification appears in the UI when a new badge is earned. Badges are displayed on the user profile page.",
+      "user_story": "As a learner, I want to earn badges for meaningful milestones so that my progress is marked with discrete moments of celebration.",
+      "acceptance_criteria": [
+        "User schema gains earnedBadges: { id: string, awardedAt: Date }[].",
+        "Initial badge set: FirstReview, SevenStreak, ThirtyStreak, TenWordsStrong, FiftyWordsLearned, FiveHundredReviews, FirstLessonCompleted.",
+        "Badge conditions are evaluated server-side after POST /srs/review.",
+        "Newly awarded badges are returned in the POST /srs/review response as newlyEarnedBadges.",
+        "Frontend shows a badge unlock animation/toast when new badges are returned.",
+        "Profile page lists all earned badges with icons, names, and award dates."
+      ],
+      "backend_changes": [
+        "Add earnedBadges: { id, awardedAt }[] to User schema.",
+        "Create badge definitions map (id, name, description, condition function).",
+        "Check and award badges inside POST /srs/review handler.",
+        "Include newlyEarnedBadges in the review response payload."
+      ],
+      "frontend_changes": [
+        "Toast notification triggered by newlyEarnedBadges in review response.",
+        "Badges section on profile/dashboard page."
+      ],
+      "dependencies": ["F-01", "F-07", "F-09"],
+      "sources": ["duolingo:F-07", "babbel:F-11"]
+    },
+    {
+      "id": "F-14",
+      "name": "Daily Reminder Notifications",
+      "category": "Engagement & Habits",
+      "priority": "P2",
+      "effort": "high",
+      "learning_impact": "high",
+      "description": "Send a browser push notification or email at a user-configured time on days the user has not yet met their daily goal. Notification includes the user's current streak count and a deep link to the review screen.",
+      "user_story": "As a learner, I want a daily reminder if I have not studied yet so that I do not break my streak by forgetting.",
+      "acceptance_criteria": [
+        "Users can set a reminder time (HH:MM local time) and toggle reminders on/off in settings.",
+        "A daily cron job identifies users with reminders enabled who have not yet met their daily goal.",
+        "Notifications are sent via web push or transactional email.",
+        "Notification body includes the user's current streak count and a link to the app.",
+        "No notification is sent on days the daily goal is already met.",
+        "Disabling reminders stops all future notifications immediately."
+      ],
+      "backend_changes": [
+        "Add notificationEnabled (boolean), notificationTime (string HH:MM), pushSubscription (object) to User schema.",
+        "Integrate a push library (e.g. web-push) or email service (e.g. Resend).",
+        "Add a cron job via @nestjs/schedule that fires at each unique reminder time."
+      ],
+      "frontend_changes": [
+        "Notification settings section in user settings page.",
+        "Register service worker and request push permission on opt-in.",
+        "Save push subscription object via PATCH /users/me."
+      ],
+      "dependencies": ["F-01", "F-08"],
+      "sources": ["duolingo:F-12", "memrise:reminders"]
+    },
+    {
+      "id": "F-15",
+      "name": "Experience Points & Leaderboards",
+      "category": "Social & Gamification",
+      "priority": "P3",
+      "effort": "high",
+      "learning_impact": "medium",
+      "description": "Award XP for each review answer (correct: 10 XP, incorrect: 4 XP for participation). XP accumulates weekly and drives a leaderboard ranking among followed users plus an optional global top-10. Weekly XP resets every Monday at 00:00 UTC. Note: Babbel intentionally omits social leaderboards; they are included here at low priority based on Duolingo and Memrise precedent.",
+      "user_story": "As a learner, I want to see how my weekly XP compares to friends so that friendly competition keeps me engaged.",
+      "acceptance_criteria": [
+        "Correct answers award 10 XP; incorrect answers award 4 XP.",
+        "User schema gains weeklyXp (number), totalXp (number); weeklyXp resets via a Monday cron job.",
+        "Users can follow/unfollow other users by user ID or username.",
+        "Leaderboard page shows weekly XP for the current user and all followed users, ranked descending.",
+        "Optional global top-10 section shows highest-ranked users this week.",
+        "Leaderboard data is cached and refreshed at most every 5 minutes.",
+        "If the user follows nobody, the page shows a prompt to find friends.",
+        "User can see their own rank even if outside the visible list."
+      ],
+      "backend_changes": [
+        "Add weeklyXp, totalXp to User schema; add xpEarned to UserWordProgress review events.",
+        "Add following: string[] (user IDs) to User schema.",
+        "POST /users/follow/:id and DELETE /users/follow/:id endpoints.",
+        "GET /leaderboard/weekly: ranked list of followed users + self with weeklyXp.",
+        "GET /srs/xp?period=today|week|month aggregation endpoint.",
+        "Weekly cron to reset weeklyXp."
+      ],
+      "frontend_changes": [
+        "New /leaderboard page.",
+        "LeaderboardRow component: rank, avatar, name, weekly XP bar.",
+        "Follow/unfollow button on user profile pages.",
+        "XP counter in header or dashboard."
+      ],
+      "dependencies": ["F-01"],
+      "sources": ["duolingo:F-02", "duolingo:F-10", "memrise:leaderboards"]
+    },
+    {
+      "id": "F-16",
+      "name": "Onboarding Intake Flow",
+      "category": "Personalisation",
+      "priority": "P2",
+      "effort": "medium",
+      "learning_impact": "medium",
+      "description": "A 3-screen onboarding flow shown to new users after first login. Collects reason for learning (heritage, travel, work, curiosity), self-assessed proficiency level (beginner, elementary, intermediate), and learning goals. Responses are stored on the User record and used to recommend a starting lesson and pre-populate goal defaults.",
+      "user_story": "As a new user, I want to tell the app why I am learning and how much I already know so that I start at the right level instead of from absolute zero.",
+      "acceptance_criteria": [
+        "User schema gains: learningGoal (enum), proficiencyLevel (enum: beginner|elementary|intermediate), onboardingCompleted (boolean).",
+        "Onboarding flow is shown once on first login when onboardingCompleted === false.",
+        "PATCH /users/me/onboarding saves collected fields and sets onboardingCompleted = true.",
+        "Proficiency level influences which lessons appear first on the lesson map (F-09).",
+        "Goals set during onboarding pre-populate Learning Goals defaults (F-08).",
+        "Users can re-run onboarding from settings to update preferences."
+      ],
+      "backend_changes": [
+        "Add learningGoal, proficiencyLevel, onboardingCompleted to User schema.",
+        "PATCH /users/me/onboarding endpoint."
+      ],
+      "frontend_changes": [
+        "New /onboarding multi-step page.",
+        "Redirect to /onboarding after first login when onboardingCompleted === false.",
+        "Feed collected goal values into F-08 goal-setting defaults."
+      ],
+      "dependencies": ["F-08", "F-09"],
+      "sources": ["babbel:F-09"]
+    },
+    {
+      "id": "F-17",
+      "name": "User-Created Mnemonics",
+      "category": "Content Quality",
+      "priority": "P3",
+      "effort": "high",
+      "learning_impact": "medium",
+      "description": "Allow users to attach a personal text or image mnemonic to any word to aid memorisation. Other users can upvote mnemonics. The highest-voted mnemonic for a word is shown during the answer-reveal phase.",
+      "user_story": "As a learner, I want to attach a personal memory trick to a word so that I can recall it more easily during review.",
+      "acceptance_criteria": [
+        "Any authenticated user can create a mnemonic for any word.",
+        "Mnemonic schema: { id, wordId, authorId, text, imageUrl?, upvotes: number }.",
+        "The mnemonic with the most upvotes is displayed by default during answer-reveal.",
+        "Users cannot upvote their own mnemonic.",
+        "A mnemonic creation form is accessible from the word detail view."
+      ],
+      "backend_changes": [
+        "New Mnemonic schema: { id, wordId, authorId, text, imageUrl?, upvotes: number }.",
+        "GET and POST /words/:id/mnemonics endpoints.",
+        "POST /words/:id/mnemonics/:mnemonicId/upvote endpoint."
+      ],
+      "frontend_changes": [
+        "Mnemonic display during answer-reveal.",
+        "Mnemonic creation form in word detail view.",
+        "Upvote button on each mnemonic."
+      ],
+      "dependencies": [],
+      "sources": ["memrise:mems"]
+    },
+    {
+      "id": "F-18",
+      "name": "Offline Mode",
+      "category": "Reliability",
+      "priority": "P3",
+      "effort": "medium",
+      "learning_impact": "low",
+      "description": "Keep the quiz fully functional without network connectivity by caching the app shell and word data via a service worker. Queue SRS result submissions in IndexedDB and flush them automatically when connectivity is restored.",
+      "user_story": "As a learner, I want the app to work without an internet connection so that I can study during a commute or in areas with poor coverage.",
+      "acceptance_criteria": [
+        "Quiz runs without any network requests once words are loaded.",
+        "Service worker caches the app shell and most-recently-fetched word data.",
+        "Unsynchronised progress events are stored in IndexedDB and flushed automatically on reconnect.",
+        "A clear offline indicator is shown in the UI when the app is offline.",
+        "All queued events are flushed before fresh due-word data is fetched after reconnect."
+      ],
+      "backend_changes": [],
+      "frontend_changes": [
+        "Service worker (or next-pwa) to cache app shell and word data.",
+        "IndexedDB queue for unsynchronised progress events.",
+        "Flush queue on reconnect before fetching fresh due words.",
+        "Offline indicator component."
+      ],
+      "dependencies": ["F-01"],
+      "sources": ["memrise:offline-mode"]
+    }
+  ],
+  "out_of_scope": [
+    {
+      "feature": "Live teacher / tutor classes",
+      "reason": "Operationally complex, high cost, not viable for a small team. Babbel also discontinued this for consumer use in 2025."
+    },
+    {
+      "feature": "AI conversation partner",
+      "reason": "High infrastructure cost; mature Uzbek NLP models do not yet exist."
+    },
+    {
+      "feature": "Podcasts and listening stories",
+      "reason": "Requires significant Uzbek audio content production; addressable once the core learning loop is stable."
+    },
+    {
+      "feature": "Full CEFR course hierarchy",
+      "reason": "Premature given current word count; the lesson/topic structure in F-09 is sufficient for this stage."
+    },
+    {
+      "feature": "Grammar-focused lessons",
+      "reason": "Scope is vocabulary acquisition; grammar instruction is a separate product surface."
+    }
+  ]
+}
