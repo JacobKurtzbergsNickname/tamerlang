@@ -2,7 +2,6 @@
 import { emptyWord, Word, Words } from "../../types/PartsOfSpeech";
 import { createContext, Dispatch, SetStateAction } from "react";
 
-// Define the initial state for the context
 export interface VocabContextProperties {
   words: Words;
   correctWord: Word;
@@ -11,29 +10,26 @@ export interface VocabContextProperties {
   setCorrectWord: Dispatch<SetStateAction<Word>>;
   isAnswerSelected: boolean;
   setIsAnswerSelected: Dispatch<SetStateAction<boolean>>;
+  loading: boolean;
+  error: string | null;
+  dueCount: number;
+  nextReviewAt: Date | null;
+  submitReview: (wordId: string, quality: number) => void;
 }
 
 const initialVocabContext: VocabContextProperties = {
-  // Initialize with an empty array of words
   words: [],
-
-  // Initialize with a new word object
   correctWord: emptyWord(),
-
-  // Placeholder function, will be replaced by the provider
   setCorrectWord: () => {},
-
-  // Initial index for the current word
   current: 0,
-
-  // Placeholder function for setting the current index
   setCurrent: () => {},
-
-  // Initial state for answer selection
   isAnswerSelected: false,
-
-  // Placeholder function for setting answer selection state
   setIsAnswerSelected: () => {},
+  loading: true,
+  error: null,
+  dueCount: 0,
+  nextReviewAt: null,
+  submitReview: () => {},
 };
 
 export const VocabularyContext = createContext(initialVocabContext);

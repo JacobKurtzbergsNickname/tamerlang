@@ -1,4 +1,4 @@
-import Vocabulary from "@/components/Vocabulary/Vocabulary";
+import { DueCountBanner } from "@/components/DueCountBanner";
 import Link from "next/link";
 
 export default function Home() {
@@ -7,10 +7,13 @@ export default function Home() {
       <h1 className="mb-10">Learning Uzbek</h1>
 
       <p className="text-2xl mb-5">Test your Uzbek vocabulary skills!</p>
-      <div className="mt-8">
+
+      <DueCountBanner />
+
+      <div className="mt-6">
         <Link href="/timed-test">
-          <button className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition">
-            Go to Timed Vocabulary Test
+          <button className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-500 transition text-sm">
+            Timed Test (legacy)
           </button>
         </Link>
       </div>

@@ -1,34 +1,39 @@
 "use client";
-import { useLocalStorage } from "../../data/useLocalStorage";
-import { emptyWord, Word, Words } from "../../types/PartsOfSpeech";
+import { useState, useCallback } from "react";
+import { Word } from "../../types/PartsOfSpeech";
 import { VocabularyContext } from "./VocabularyContext";
-import { useState } from "react";
+import { useSrsWords } from "../../hooks/useSrsWords";
+import { authFetch } from "../../lib/api";
 
 type ProviderProperties = {
   children: React.ReactNode;
 };
 
-const localWords: Words = [
-  { id: 1, word: "Salom", translation: "Hello" },
-  { id: 2, word: "Xayr", translation: "Goodbye" },
-  { id: 3, word: "Rahmat", translation: "Thank you" },
-  { id: 4, word: "Iltimos", translation: "Please" },
-  { id: 5, word: "Ha", translation: "Yes" },
-  { id: 6, word: "Yo'q", translation: "No" },
-  { id: 7, word: "Qanday?", translation: "How?" },
-  { id: 8, word: "Nima?", translation: "What?" },
-  { id: 9, word: "Kim?", translation: "Who?" },
-  { id: 10, word: "Qayerda?", translation: "Where?" },
-];
-
-// Create the provider component
 export const VocabularyProvider: React.FC<ProviderProperties> = ({
   children,
 }) => {
-  const words: Words = useLocalStorage<Words>("words", localWords)[0];
-  const [correctWord, setCorrectWord] = useState<Word>(emptyWord());
+  const { words, loading, error, dueCount, nextReviewAt, token } =
+    useSrsWords();
+  const [correctWord, setCorrectWord] = useState<Word>({ id: "", word: "", translation: "" });
   const [current, setCurrent] = useState<number>(0);
   const [isAnswerSelected, setIsAnswerSelected] = useState<boolean>(false);
+
+  const submitReview = useCallback(
+    (wordId: string, quality: number) => {
+      if (!token) return;
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+      void authFetch(
+        `${apiUrl}/srs/review`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ wordId, wordType: "word", quality }),
+        },
+        token,
+      );
+    },
+    [token],
+  );
 
   return (
     <VocabularyContext.Provider
@@ -40,6 +45,11 @@ export const VocabularyProvider: React.FC<ProviderProperties> = ({
         setCorrectWord,
         isAnswerSelected,
         setIsAnswerSelected,
+        loading,
+        error,
+        dueCount,
+        nextReviewAt,
+        submitReview,
       }}
     >
       {children}
