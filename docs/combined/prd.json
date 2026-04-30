@@ -20,6 +20,8 @@
       "priority": "P0",
       "effort": "medium",
       "learning_impact": "very_high",
+      "status": "in_review",
+      "branch": "claude/mvp-feature-planning-Lh158",
       "description": "Schedule each word for review at increasing intervals using the SM-2 algorithm. The backend SRS implementation already exists; this feature wires it to the frontend so the quiz loads due cards from GET /srs/due and submits quality ratings (0–5) to POST /srs/review after each answer.",
       "user_story": "As a learner, I want the app to automatically surface words I need to review today so that I reinforce vocabulary at the optimal moment for long-term retention.",
       "acceptance_criteria": [
