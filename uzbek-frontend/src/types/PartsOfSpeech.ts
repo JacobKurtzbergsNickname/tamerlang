@@ -12,7 +12,7 @@ type Result = {
 type WordDBO = Word & DbEntry;
 
 type Word = {
-  id: number;
+  id: string;
   word: string;
   translation: string;
 };
@@ -61,7 +61,7 @@ type WordForms = Array<WordForm>;
 
 const emptyWord = (): Word => {
   return {
-    id: 0,
+    id: "",
     word: "",
     translation: "",
   };

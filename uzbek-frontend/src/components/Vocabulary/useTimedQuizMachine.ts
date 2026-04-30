@@ -4,23 +4,8 @@ import { AnswerOptionDTO } from "../../types/AnswerOption";
 import { WordUtils } from "../../utils/word-utilities";
 
 // --- Types ---
-/**
- * Phase of the quiz machine, representing the current step in the quiz flow.
- * - 'question': User is answering the question.
- * - 'showingAnswer': Correct answer is shown after user input or timeout.
- * - 'finished': Quiz is complete.
- */
 type Phase = "question" | "showingAnswer" | "finished";
 
-/**
- * State structure for the quiz machine.
- * @property current - Index of the current question.
- * @property phase - Current phase of the quiz.
- * @property timer - Seconds left for the current question.
- * @property selected - User's selected answer (word), or null.
- * @property answerOptions - Current answer options for the question.
- * @property results - Array of results for each question.
- */
 interface QuizState {
   current: number;
   phase: Phase;
@@ -30,11 +15,6 @@ interface QuizState {
   results: Array<{ word: Word; selected: string | null; correct: boolean }>;
 }
 
-/**
- * Actions for quiz state management.
- * @property type - Action type for state transition.
- * @property answer - User's selected answer (for SELECT_ANSWER).
- */
 type QuizAction =
   | { type: "START_QUESTION" }
   | { type: "TICK" }
@@ -45,23 +25,10 @@ type QuizAction =
   | { type: "FINISH" };
 
 // --- Helpers ---
-/**
- * Generates answer options for the current question.
- * @param words - Array of all quiz words.
- * @param current - Index of the current question.
- * @returns Array of answer options for the question.
- */
 function generateOptions(words: Word[], current: number): AnswerOptionDTO[] {
   return WordUtils.generateTestOptions(words, current);
 }
 
-/**
- * Marks answer options as correct/incorrect/selected based on user input or timeout.
- * @param options - Array of answer options.
- * @param correctWord - The correct answer word.
- * @param selected - User's selected answer, or null for timeout.
- * @returns Array of answer options with marking applied.
- */
 function markAnswers(
   options: AnswerOptionDTO[],
   correctWord: string,
@@ -69,7 +36,6 @@ function markAnswers(
 ): AnswerOptionDTO[] {
   return options.map((opt) => {
     if (selected === null) {
-      // Timeout: highlight correct
       return {
         ...opt,
         isSelected: false,
@@ -95,13 +61,6 @@ function markAnswers(
 }
 
 // --- Reducer ---
-/**
- * Reducer function for quiz state transitions.
- * Handles all quiz logic and state changes based on actions.
- * @param state - Current quiz state.
- * @param action - Action to transition state.
- * @returns New quiz state after transition.
- */
 function quizReducer(
   state: QuizState,
   action: QuizAction & { words: Word[] },
@@ -120,7 +79,6 @@ function quizReducer(
     case "TICK":
       if (state.phase !== "question") return state;
       if (state.timer <= 1 && state.selected === null) {
-        // Timeout
         return {
           ...state,
           phase: "showingAnswer",
@@ -131,7 +89,7 @@ function quizReducer(
       return { ...state, timer: state.timer - 1 };
     case "SELECT_ANSWER":
       if (state.phase !== "question") return state;
-      const correct = action.answer === word.translation;
+      const correct = action.answer === word.word;
       return {
         ...state,
         phase: "showingAnswer",
@@ -165,13 +123,10 @@ function quizReducer(
 }
 
 // --- Custom Hook ---
-/**
- * Custom hook for timed quiz state machine.
- * Encapsulates reducer, orchestrating effect, and action dispatchers.
- * @param words - Array of quiz words.
- * @returns Quiz state, answer selection dispatcher, and restart dispatcher.
- */
-export function useTimedQuizMachine(words: Word[]) {
+export function useTimedQuizMachine(
+  words: Word[],
+  onReview?: (wordId: string, quality: number) => void,
+) {
   const initialState: QuizState = {
     current: 0,
     phase: "question",
@@ -181,10 +136,21 @@ export function useTimedQuizMachine(words: Word[]) {
     results: [],
   };
   const [state, dispatch] = useReducer(
-    (s, a) => quizReducer(s, { ...a, words }),
+    (s: QuizState, a: QuizAction) => quizReducer(s, { ...a, words }),
     initialState,
   );
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevResultsLengthRef = useRef(0);
+
+  // Fire onReview whenever a new result is recorded
+  useEffect(() => {
+    if (state.results.length <= prevResultsLengthRef.current) return;
+    prevResultsLengthRef.current = state.results.length;
+    const last = state.results[state.results.length - 1];
+    // SM-2 quality: timeout = 0, correct = 4, incorrect = 1
+    const quality = last.selected === null ? 0 : last.correct ? 4 : 1;
+    onReview?.(last.word.id, quality);
+  }, [state.results.length, onReview]);
 
   // Orchestrate timer and phase transitions
   useEffect(() => {
@@ -206,13 +172,11 @@ export function useTimedQuizMachine(words: Word[]) {
       default:
         break;
     }
-    // Cleanup for timer interval
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [state.phase]);
 
-  // Action dispatchers
   const selectAnswer = (answer: string) =>
     dispatch({ type: "SELECT_ANSWER", answer });
   const restart = () => dispatch({ type: "START_QUESTION" });
